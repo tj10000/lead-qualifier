@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 interface FormData {
   companyName: string;
@@ -29,11 +31,24 @@ const EMPTY_FORM: FormData = {
 };
 
 export default function Home() {
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [appState, setAppState] = useState<AppState>("idle");
   const [result, setResult] = useState<LeadResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        router.replace("/auth/login");
+      } else {
+        setAuthChecked(true);
+      }
+    });
+  }, [router]);
 
   useEffect(() => {
     return () => {
@@ -116,6 +131,8 @@ export default function Home() {
     setResult(null);
     setErrorMsg("");
   }
+
+  if (!authChecked) return null;
 
   return (
     <div className="space-y-8">
