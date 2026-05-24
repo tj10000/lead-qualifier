@@ -25,17 +25,25 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh session — do not remove this call
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const isAuthRoute = request.nextUrl.pathname.startsWith("/auth");
 
-  if (!user && !isAuthRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/auth/login";
-    return NextResponse.redirect(url);
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user && !isAuthRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/login";
+      return NextResponse.redirect(url);
+    }
+  } catch {
+    // Supabase call failed — safe default is to require login
+    if (!isAuthRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/login";
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;
