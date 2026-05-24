@@ -1,5 +1,6 @@
 import { tasks } from "@trigger.dev/sdk/v3";
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 interface LeadPayload {
   companyName: string;
@@ -10,6 +11,15 @@ interface LeadPayload {
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body: LeadPayload = await req.json();
 

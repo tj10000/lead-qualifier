@@ -92,6 +92,11 @@ export default function Home() {
           if (data.status === "COMPLETED" && data.output) {
             setResult(data.output);
             setAppState("result");
+            fetch("/api/leads", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ runId, ...form, ...data.output }),
+            }).catch((err) => console.error("[save lead]", err));
           } else {
             setAppState("error");
             setErrorMsg(data.error ?? `Run ended with status: ${data.status}`);

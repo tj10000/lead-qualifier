@@ -1,5 +1,6 @@
 import { runs } from "@trigger.dev/sdk/v3";
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 interface LeadOutput {
   score: number;
@@ -21,6 +22,15 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ runId: string }> }
 ) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { runId } = await params;
 
   if (!runId) {
