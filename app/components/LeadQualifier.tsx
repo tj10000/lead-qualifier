@@ -45,6 +45,7 @@ export default function LeadQualifier({
   const [result, setResult] = useState<LeadResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [upgrading, setUpgrading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string>("");
   const [currentUsage, setCurrentUsage] = useState(usageCount);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchParams = useSearchParams();
@@ -155,15 +156,18 @@ export default function LeadQualifier({
 
   async function handleUpgrade() {
     setUpgrading(true);
+    setUpgradeError("");
     try {
-      const res = await fetch("/api/stripe/create-checkout", {
-        method: "POST",
-      });
+      const res = await fetch("/api/stripe/create-checkout", { method: "POST" });
       const data = await res.json();
       if (data.url) {
         window.location.href = data.url;
+      } else {
+        setUpgradeError(data.error ?? "Checkout failed — check Stripe env vars in Vercel.");
+        setUpgrading(false);
       }
-    } catch {
+    } catch (err) {
+      setUpgradeError("Network error — could not reach checkout.");
       setUpgrading(false);
     }
   }
@@ -230,6 +234,10 @@ export default function LeadQualifier({
             {upgrading ? "..." : "Upgrade"}
           </button>
         </div>
+      )}
+
+      {upgradeError && (
+        <p className="text-red-600 text-xs text-center -mt-4">{upgradeError}</p>
       )}
 
       {/* Upgrade wall — shown when free tier is exhausted */}

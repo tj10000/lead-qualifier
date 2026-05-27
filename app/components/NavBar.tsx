@@ -28,8 +28,14 @@ export default function NavBar({ email, plan }: NavBarProps) {
     try {
       const res = await fetch("/api/stripe/create-checkout", { method: "POST" });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error ?? "Checkout failed — check Stripe env vars in Vercel.");
+        setUpgrading(false);
+      }
     } catch {
+      alert("Network error — could not reach checkout.");
       setUpgrading(false);
     }
   }
