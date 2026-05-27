@@ -18,12 +18,22 @@ export default async function RootLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
+  let plan: "free" | "pro" = "free";
+  if (user) {
+    const { data: subscription } = await supabase
+      .from("subscriptions")
+      .select("plan")
+      .eq("user_id", user.id)
+      .single();
+    if (subscription?.plan === "pro") plan = "pro";
+  }
+
   return (
     <html lang="en">
       <body>
         <div className="min-h-screen bg-cream-200">
           <div className="h-1 w-full bg-gradient-to-r from-coral-500 to-coral-400" />
-          {user && <NavBar email={user.email ?? ""} />}
+          {user && <NavBar email={user.email ?? ""} plan={plan} />}
           <main className="mx-auto max-w-2xl px-4 py-12">
             {children}
           </main>

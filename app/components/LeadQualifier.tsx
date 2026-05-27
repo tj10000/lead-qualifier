@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
 interface FormData {
   companyName: string;
@@ -16,6 +17,12 @@ interface LeadResult {
   recommendation: "Go" | "Maybe" | "No-Go";
 }
 
+interface LeadQualifierProps {
+  plan: "free" | "pro";
+  usageCount: number;
+  usageLimit: number;
+}
+
 type AppState = "idle" | "loading" | "result" | "error";
 
 const POLL_INTERVAL_MS = 2000;
@@ -28,18 +35,37 @@ const EMPTY_FORM: FormData = {
   budget: "",
 };
 
-export default function LeadQualifier() {
+export default function LeadQualifier({
+  plan,
+  usageCount,
+  usageLimit,
+}: LeadQualifierProps) {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [appState, setAppState] = useState<AppState>("idle");
   const [result, setResult] = useState<LeadResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
+  const [upgrading, setUpgrading] = useState(false);
+  const [currentUsage, setCurrentUsage] = useState(usageCount);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const isAtLimit = plan === "free" && currentUsage >= usageLimit;
+  const justUpgraded = searchParams.get("upgraded") === "true";
 
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  // Remove ?upgraded=true from URL after showing the banner
+  useEffect(() => {
+    if (justUpgraded) {
+      const timer = setTimeout(() => router.replace("/"), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [justUpgraded, router]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -58,6 +84,15 @@ export default function LeadQualifier() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+
+      if (triggerRes.status === 403) {
+        const data = await triggerRes.json();
+        if (data.error === "limit_reached") {
+          setCurrentUsage(data.usageCount);
+          setAppState("idle");
+          return;
+        }
+      }
 
       if (!triggerRes.ok) {
         const data = await triggerRes.json();
@@ -92,6 +127,7 @@ export default function LeadQualifier() {
           if (data.status === "COMPLETED" && data.output) {
             setResult(data.output);
             setAppState("result");
+            setCurrentUsage((prev) => prev + 1);
             fetch("/api/leads", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -117,8 +153,32 @@ export default function LeadQualifier() {
     setErrorMsg("");
   }
 
+  async function handleUpgrade() {
+    setUpgrading(true);
+    try {
+      const res = await fetch("/api/stripe/create-checkout", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch {
+      setUpgrading(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
+      {/* Success banner after Stripe redirect */}
+      {justUpgraded && (
+        <div className="bg-green-50 border border-green-200 rounded-2xl px-6 py-4 flex items-center gap-3">
+          <span className="text-green-600 font-medium">
+            You&apos;re now on Pro — unlimited qualifications!
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-semibold text-warm-900 tracking-tight">
@@ -128,10 +188,80 @@ export default function LeadQualifier() {
           Enter a lead&apos;s details to get an instant AI-powered score and
           recommendation.
         </p>
+        {/* Usage badge */}
+        <div className="flex justify-center pt-1">
+          {plan === "pro" ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-coral-600 bg-coral-50 border border-coral-200 rounded-full px-3 py-1">
+              Pro — Unlimited qualifications
+            </span>
+          ) : (
+            <span
+              className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-3 py-1 border ${
+                currentUsage >= usageLimit
+                  ? "text-red-600 bg-red-50 border-red-200"
+                  : "text-warm-600 bg-cream-100 border-warm-200"
+              }`}
+            >
+              {currentUsage} of {usageLimit} free qualifications used today
+            </span>
+          )}
+        </div>
       </div>
 
+      {/* Persistent upgrade CTA for free users (always visible) */}
+      {plan === "free" && !isAtLimit && (
+        <div className="bg-cream-100 rounded-2xl border border-warm-200 px-6 py-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-warm-800">
+              Upgrade to Pro — $29/mo
+            </p>
+            <p className="text-xs text-warm-400 mt-0.5">
+              Unlimited qualifications every day. Cancel anytime.
+            </p>
+          </div>
+          <button
+            onClick={handleUpgrade}
+            disabled={upgrading}
+            className="shrink-0 rounded-xl bg-coral-500 hover:bg-coral-600
+                       disabled:bg-warm-300 disabled:cursor-not-allowed
+                       text-white text-sm font-medium py-2 px-4
+                       transition-colors duration-150"
+          >
+            {upgrading ? "..." : "Upgrade"}
+          </button>
+        </div>
+      )}
+
+      {/* Upgrade wall — shown when free tier is exhausted */}
+      {isAtLimit && appState !== "result" && (
+        <div className="bg-cream-100 rounded-2xl shadow-card border border-coral-200 p-8 text-center space-y-4">
+          <p className="text-warm-900 font-semibold text-lg">
+            Daily limit reached
+          </p>
+          <p className="text-warm-500 text-sm leading-relaxed">
+            You&apos;ve used both free qualifications today. Upgrade to Pro for{" "}
+            <span className="font-semibold text-warm-700">$29/month</span> and
+            get unlimited qualifications every day.
+          </p>
+          <button
+            onClick={handleUpgrade}
+            disabled={upgrading}
+            className="w-full rounded-xl bg-coral-500 hover:bg-coral-600
+                       disabled:bg-warm-300 disabled:cursor-not-allowed
+                       text-white font-medium py-3 px-6
+                       transition-colors duration-150
+                       focus:outline-none focus:ring-2 focus:ring-coral-500/40"
+          >
+            {upgrading ? "Redirecting to checkout..." : "Upgrade to Pro — $29/mo"}
+          </button>
+          <p className="text-xs text-warm-400">
+            Resets at midnight UTC &middot; Cancel anytime
+          </p>
+        </div>
+      )}
+
       {/* Form Card */}
-      {(appState === "idle" || appState === "loading") && (
+      {!isAtLimit && (appState === "idle" || appState === "loading") && (
         <div className="bg-cream-100 rounded-2xl shadow-card p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>

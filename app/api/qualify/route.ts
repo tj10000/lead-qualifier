@@ -2,6 +2,8 @@ import { tasks } from "@trigger.dev/sdk/v3";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+const FREE_DAILY_LIMIT = 2;
+
 interface LeadPayload {
   companyName: string;
   industry: string;
@@ -21,6 +23,40 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Check subscription plan
+    const { data: subscription } = await supabase
+      .from("subscriptions")
+      .select("plan")
+      .eq("user_id", user.id)
+      .single();
+
+    const isPro = subscription?.plan === "pro";
+
+    if (!isPro) {
+      // Count leads qualified today (UTC)
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+
+      const { count } = await supabase
+        .from("leads")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .gte("created_at", todayStart.toISOString());
+
+      const usageCount = count ?? 0;
+
+      if (usageCount >= FREE_DAILY_LIMIT) {
+        return NextResponse.json(
+          {
+            error: "limit_reached",
+            usageCount,
+            limit: FREE_DAILY_LIMIT,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     const body: LeadPayload = await req.json();
 
     const required: (keyof LeadPayload)[] = [
