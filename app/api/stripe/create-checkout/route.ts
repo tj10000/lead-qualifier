@@ -13,27 +13,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const priceId = process.env.STRIPE_PRICE_ID;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+  // Surface misconfiguration immediately
+  if (!priceId) {
+    return NextResponse.json({ error: "STRIPE_PRICE_ID is not set in environment variables." }, { status: 500 });
+  }
+  if (!appUrl) {
+    return NextResponse.json({ error: "NEXT_PUBLIC_APP_URL is not set in environment variables." }, { status: 500 });
+  }
+
   try {
-    // Reuse existing Stripe customer if one exists for this user
-    const { data: subscription } = await supabase
-      .from("subscriptions")
-      .select("stripe_customer_id")
-      .eq("user_id", user.id)
-      .single();
-
-    let customerId = subscription?.stripe_customer_id;
-
-    if (!customerId) {
-      const customer = await stripe.customers.create({ email: user.email! });
-      customerId = customer.id;
-    }
-
     const session = await stripe.checkout.sessions.create({
-      customer: customerId,
       mode: "subscription",
-      line_items: [{ price: process.env.STRIPE_PRICE_ID!, quantity: 1 }],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/?upgraded=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/`,
+      customer_email: user.email!,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${appUrl}/?upgraded=true`,
+      cancel_url: `${appUrl}/`,
       metadata: { user_id: user.id },
     });
 
