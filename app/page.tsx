@@ -21,7 +21,7 @@ export default async function Home() {
     .from("subscriptions")
     .select("plan")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
   const plan = subscription?.plan === "pro" ? "pro" : "free";
 
